@@ -1,0 +1,6 @@
+{
+	"problem": "P-n16-k8",
+	"generations": 100,
+	"mutation rate": 0.50,
+	"population size": 100
+}
