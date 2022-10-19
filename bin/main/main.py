@@ -1,12 +1,12 @@
 import os
 import sys
+import time
 import numpy as np
 os.chdir(os.path.dirname(__file__) + '/../../')
 sys.path.insert(0, 'bin/lib')
-import report
+import report as reporter
 import read
 import validate
-import time
 
 
 # create a population of random candidate solutions (individuals)
@@ -46,10 +46,12 @@ def populate(params, cvrp):
 
     return population
 
+
 # get the fitness of the individuals
 def fitness(N, population):
     # get the distances between each node (including the starting and ending depot node)
-    return np.sum(np.sqrt(np.sum(np.square(population[:, :N, 1:3] - population[:, 1:1+N, 1:3]), axis=2)), axis=1)
+    population[:, -1, -1] = np.sum(np.sqrt(np.sum(np.square(population[:, :N, 1:3] - population[:, 1:1+N, 1:3]), axis=2)), axis=1)
+
 
 # pair and crossover the individuals to get the offspring using 1-point crossover
 def crossover(M, N, population):
@@ -71,69 +73,21 @@ def crossover(M, N, population):
         offspring[p, 0, cuts[p]:] = parents[p, 1, cuts[p]:]
         offspring[p, 1, :cuts[p]] = parents[p, 1, :cuts[p]]
         offspring[p, 1, cuts[p]:] = parents[p, 0, cuts[p]:]
-        count = validate.crossover(parents[p, 0], parents[p, 1], offspring[p, 0], offspring[p, 1], cuts[p], True)
+        validate.crossover(parents[p, 0], parents[p, 1], offspring[p, 0], offspring[p, 1], cuts[p], False)
 
     return offspring.reshape((M, N + 2, 4))
 
-if __name__ == '__main__':
-    # print a report header
-    report.header()
 
-    # read in the problem info
-    params, cvrp = read.read(sys.argv)
+# mutate the offspring using scramble mutation
+def mutate(M, N, offspring):
+    # generate the random cuts to be made for scrambling and sort them so that the smaller cut is first
+    cuts = np.random.randint(low=1, high=N, size=(M, 2))
+    cuts = np.sort(cuts, axis=1)
 
-    # populate with individuals
-    population = populate(params, cvrp)
+    # conduct the mutation
+    for i in range(M):
+        np.random.shuffle(offspring[i][cuts[i][0]:cuts[i][1]])
 
-    # get the fitness of the individuals
-    population[:, -1, -1] = fitness(cvrp['Dimension'], population)
-
-    # conduct the iterative process of the genetic algorithm
-    for generation in range(params['Generations']):
-
-        # perform the crossover operation
-        offspring = crossover(params['Population Size'], cvrp['Dimension'], population)
-
-        # perform the mutation operation
-        # offspring = mutate(offspring)
-
-        # get the fitness of the population
-        # offspring = fitness(offspring)
-
-        # select the next generation's population
-        # population = select(offspring, population)
-
-        # print any results
-
-    # save and print the final results
-
-# # mutate the offspring using scramble mutation
-# def mutate(population):
-#     # generate random number and determine if mutation will be done
-#     prob = np.random.rand(M)
-
-#     # reorder the population based off it will be mutated or not
-#     order = np.arange(M)
-#     aux = np.zeros((M, 2))
-#     aux[:, 0] = order
-#     aux[:, 1] = prob
-#     aux = aux[aux[:, 1].argsort()]  # sort by the probability
-#     mutated = aux[:, 0].astype(np.int32)    # get the indicies of the individuals that will be mutated
-#     offspring = population[mutated]
-
-#     # get the cutoff point of where the mutation operation stops
-#     stop = np.searchsorted(aux[:,1], MUTATION_RATE)
-
-#     # generate the random cuts to be made for scrambling and sort them so that the smaller cut is first
-#     cuts = np.random.randint(low=1, high=N, size=(stop, 2))
-#     cuts = np.sort(cuts, axis=1)
-
-#     # conduct the mutation
-#     for i in range(stop):
-#         individual = offspring[i]
-#         np.random.shuffle(individual[cuts[i][0]:cuts[i][1]])
-#         offspring[i] = individual
-#     return offspring
 
 # # select the parents for the next generation using elitism
 # def select(parents, offspring):
@@ -147,3 +101,43 @@ if __name__ == '__main__':
 #     population[-ELITE:] = sortedParents[:ELITE]
 
 #     return population
+
+
+if __name__ == '__main__':
+    # print a report header
+    report = reporter.report()
+    report.header()
+    
+    # read in the problem info
+    params, cvrp = read.read(sys.argv)
+
+    # populate with individuals
+    population = populate(params, cvrp)
+
+    # get the fitness of the individuals
+    fitness(cvrp['Dimension'], population)
+
+    # conduct the iterative process of the genetic algorithm
+    start = time.time()
+    for generation in range(1, params['Generations']):
+
+        # perform the crossover operation
+        offspring = crossover(params['Population Size'], cvrp['Dimension'], population)
+
+        # perform the mutation operation
+        #mutate(params['Population Size'], cvrp['Dimension'], offspring)
+
+        # get the fitness of the population
+        fitness(cvrp['Dimension'], offspring)
+
+        # select the next generation's population
+        # population = select(offspring, population)
+
+        # save and print updates
+        if generation % params['Printing Interval'] == 0:
+            t = time.time() - start
+            cost = np.min(population[:, -1, -1])
+            report.update(generation, t, cost, cvrp['Best'])
+
+    # save and print the final results
+    report.save(population, False)
